@@ -1,0 +1,1389 @@
+<!DOCTYPE html>
+<html lang="es" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Simulador Térmico de Satélite Cúbico</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Fuentes de telemetría aeroespacial: Inter y JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'system-ui', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+          colors: {
+            space: {
+              950: '#070b14',
+              900: '#0c1222',
+              850: '#11192e',
+              800: '#17223b',
+            }
+          }
+        }
+      }
+    };
+  </script>
+
+  <style>
+    /* Estilos base de consola aeroespacial */
+    body {
+      background-color: #070b14;
+      color: #e2e8f0;
+      font-family: 'Inter', system-ui, sans-serif;
+      overflow-x: hidden;
+    }
+
+    .tabular-nums {
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* Paneles translúcidos estilo vidrio esmerilado */
+    .glass-panel {
+      background: linear-gradient(145deg, rgba(16, 24, 43, 0.82), rgba(10, 15, 29, 0.9));
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(148, 163, 184, 0.14);
+      box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.65);
+    }
+
+    /* Personalización de controles deslizantes (range sliders) */
+    input[type="range"].aero-slider {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 100%;
+      height: 6px;
+      border-radius: 999px;
+      background: rgba(51, 65, 85, 0.75);
+      outline: none;
+      cursor: pointer;
+    }
+
+    input[type="range"].aero-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #38bdf8;
+      border: 2px solid #070b14;
+      box-shadow: 0 0 10px rgba(56, 189, 248, 0.65);
+      transition: transform 0.15s ease, background-color 0.15s ease;
+    }
+
+    input[type="range"].aero-slider::-webkit-slider-thumb:hover {
+      transform: scale(1.15);
+      background: #7dd3fc;
+    }
+
+    input[type="range"].aero-slider::-moz-range-thumb {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #38bdf8;
+      border: 2px solid #070b14;
+      box-shadow: 0 0 10px rgba(56, 189, 248, 0.65);
+      cursor: pointer;
+    }
+
+    /* Animación sutil del LED de estado */
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.45; transform: scale(0.85); }
+    }
+    .led-active {
+      animation: pulse-dot 1.6s infinite ease-in-out;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col selection:bg-sky-500/30 selection:text-sky-200">
+
+  <!-- Barra superior de Control de Misión -->
+  <header class="border-b border-slate-800/80 bg-[#080d19]/90 backdrop-blur-md sticky top-0 z-30">
+    <div class="max-w-[1440px] mx-auto px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-3">
+      <div class="flex items-center gap-3">
+        <!-- Icono SVG orbital -->
+        <div class="w-9 h-9 rounded-xl bg-sky-500/15 border border-sky-400/30 flex items-center justify-center text-sky-400 shrink-0">
+          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <rect x="7" y="7" width="10" height="10" rx="2" />
+            <path d="M2 12h5M17 12h5M12 2v5M12 17v5" stroke-linecap="round" />
+            <circle cx="12" cy="12" r="2" fill="currentColor" />
+          </svg>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="text-base sm:text-lg font-bold tracking-tight text-slate-100">
+              Simulador Térmico de Satélite Cúbico
+            </h1>
+            <span class="hidden sm:inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-mono font-medium bg-sky-500/10 text-sky-300 border border-sky-500/25">
+              ÓRBITA LEO · VACÍO
+            </span>
+          </div>
+          <p class="text-xs text-slate-400 hidden sm:block">
+            Balance radiativo solar (1361 W/m²), emisión infrarroja (Stefan-Boltzmann) y conducción interna
+          </p>
+        </div>
+      </div>
+
+      <!-- Constantes físicas rápidas -->
+      <div class="flex items-center gap-2 sm:gap-4 text-xs font-mono text-slate-400">
+        <div class="px-2.5 py-1.5 rounded-lg bg-slate-900/90 border border-slate-800 flex items-center gap-1.5">
+          <span class="w-2 h-2 rounded-full bg-amber-400"></span>
+          <span>Sol: <strong class="text-amber-300 tabular-nums">1361 W/m²</strong></span>
+        </div>
+        <div class="px-2.5 py-1.5 rounded-lg bg-slate-900/90 border border-slate-800 hidden md:flex items-center gap-1.5">
+          <span class="w-2 h-2 rounded-full bg-cyan-400"></span>
+          <span>Espacio: <strong class="text-cyan-300 tabular-nums">-270.15 °C (3 K)</strong></span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Contenido Principal -->
+  <main class="flex-1 max-w-[1440px] w-full mx-auto px-4 sm:px-6 py-5 grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+
+    <!-- COLUMNA IZQUIERDA (7 cols en desktop): Lienzo Espacial + Gráfica Histórica -->
+    <div class="lg:col-span-7 xl:col-span-8 flex flex-col gap-5">
+
+      <!-- Escenario Principal de Simulación -->
+      <section class="glass-panel rounded-2xl overflow-hidden flex flex-col relative">
+        <!-- Cabecera flotante del visor -->
+        <div class="px-4 py-3 border-b border-slate-800/70 flex flex-wrap items-center justify-between gap-2 bg-slate-950/40">
+          <div class="flex items-center gap-2">
+            <span class="text-xs font-mono uppercase tracking-wider text-slate-400">Visor Térmico en Tiempo Real</span>
+          </div>
+          <div class="flex items-center gap-3 text-[11px] font-mono text-slate-400">
+            <span class="flex items-center gap-1.5">
+              <span class="inline-block w-3 h-0.5 bg-amber-400"></span> Radiación Solar
+            </span>
+            <span class="flex items-center gap-1.5">
+              <span class="inline-block w-3 h-0.5 bg-rose-400"></span> Emisión IR (∝ T⁴)
+            </span>
+          </div>
+        </div>
+
+        <!-- Contenedor fluido del Canvas Principal -->
+        <div id="simCanvasWrapper" class="relative w-full h-[380px] sm:h-[440px] lg:h-[470px] bg-[#070b14]">
+          <canvas id="simCanvas" class="block w-full h-full"></canvas>
+
+          <!-- Leyenda térmica inferior integrada -->
+          <div class="absolute bottom-3 left-3 right-3 sm:left-auto sm:right-4 sm:w-80 bg-slate-950/85 backdrop-blur-md border border-slate-800/90 rounded-xl px-3 py-2 pointer-events-none">
+            <div class="flex justify-between text-[10px] font-mono text-slate-400 mb-1 tabular-nums">
+              <span>-140 °C</span>
+              <span>-40 °C</span>
+              <span>+15 °C</span>
+              <span>+70 °C</span>
+              <span>+140 °C</span>
+            </div>
+            <div class="h-2 w-full rounded-full" style="background: linear-gradient(90deg, #1d4ed8 0%, #06b6d4 28%, #e2e8f0 52%, #f59e0b 76%, #ef4444 100%);"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Gráfica Histórica de Temperatura en Vivo -->
+      <section class="glass-panel rounded-2xl p-4 flex flex-col gap-3">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h2 class="text-sm font-semibold text-slate-100">Evolución Térmica por Cara</h2>
+            <p class="text-xs text-slate-400">Historial continuo de temperatura (°C) frente al tiempo de misión</p>
+          </div>
+          <div class="flex items-center gap-3">
+            <!-- Leyenda de las 4 caras -->
+            <div class="flex flex-wrap items-center gap-2.5 text-xs font-mono">
+              <span class="flex items-center gap-1 text-amber-300"><span class="w-2.5 h-2.5 rounded-full bg-amber-400"></span>A</span>
+              <span class="flex items-center gap-1 text-emerald-300"><span class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>B</span>
+              <span class="flex items-center gap-1 text-cyan-300"><span class="w-2.5 h-2.5 rounded-full bg-cyan-400"></span>C</span>
+              <span class="flex items-center gap-1 text-violet-300"><span class="w-2.5 h-2.5 rounded-full bg-violet-400"></span>D</span>
+            </div>
+            <button id="btnClearChart" type="button" class="px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-800/90 hover:bg-slate-700 text-slate-300 border border-slate-700/80 transition active:scale-95">
+              Limpiar gráfica
+            </button>
+          </div>
+        </div>
+
+        <div id="chartCanvasWrapper" class="w-full h-[185px] sm:h-[205px] rounded-xl bg-slate-950/70 border border-slate-800/80 overflow-hidden">
+          <canvas id="chartCanvas" class="block w-full h-full"></canvas>
+        </div>
+      </section>
+    </div>
+
+    <!-- COLUMNA DERECHA (5 cols en desktop): Cronómetro, Telemetría y Controles -->
+    <div class="lg:col-span-5 xl:col-span-4 flex flex-col gap-5">
+
+      <!-- 1. CRONÓMETRO DE MISIÓN REINICIABLE -->
+      <section class="glass-panel rounded-2xl p-4 sm:p-5 flex flex-col gap-4 border-sky-500/20">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <span id="timerLed" class="w-2.5 h-2.5 rounded-full bg-emerald-400 led-active"></span>
+            <h2 class="text-xs font-mono uppercase tracking-wider text-slate-300 font-semibold">
+              Cronómetro de Misión
+            </h2>
+          </div>
+          <span id="timerStatusBadge" class="text-[11px] font-mono px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+            EN CURSO
+          </span>
+        </div>
+
+        <!-- Display Digital Principal + Selector de Velocidad -->
+        <div class="flex flex-wrap items-center justify-between gap-3 bg-slate-950/85 border border-slate-800/90 rounded-xl px-4 py-3">
+          <div>
+            <div class="text-[10px] font-mono uppercase tracking-widest text-slate-500">Tiempo Transcurrido</div>
+            <div id="stopwatchDisplay" class="text-3xl sm:text-4xl font-mono font-bold tracking-tight text-sky-300 tabular-nums mt-0.5">
+              00:00.0
+            </div>
+          </div>
+
+          <!-- Selector de Velocidad (1x, 2x, 5x) -->
+          <div class="flex flex-col items-end gap-1">
+            <span class="text-[10px] font-mono uppercase tracking-wider text-slate-500">Velocidad</span>
+            <div class="inline-flex rounded-lg bg-slate-900 p-1 border border-slate-800" role="group" aria-label="Velocidad de simulación">
+              <button type="button" data-speed="1" class="speed-btn px-2.5 py-1 rounded-md text-xs font-mono font-semibold bg-sky-500 text-slate-950 shadow-sm transition">
+                1x
+              </button>
+              <button type="button" data-speed="2" class="speed-btn px-2.5 py-1 rounded-md text-xs font-mono font-semibold text-slate-400 hover:text-slate-200 transition">
+                2x
+              </button>
+              <button type="button" data-speed="5" class="speed-btn px-2.5 py-1 rounded-md text-xs font-mono font-semibold text-slate-400 hover:text-slate-200 transition">
+                5x
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Botones de Acción del Cronómetro y Simulación -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+          <button id="btnPauseResume" type="button" class="px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-semibold bg-sky-500 hover:bg-sky-400 text-slate-950 shadow-lg shadow-sky-500/20 flex items-center justify-center gap-2 transition active:scale-[0.98]">
+            <svg id="iconPause" class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+              <rect x="6" y="5" width="4" height="14" rx="1" />
+              <rect x="14" y="5" width="4" height="14" rx="1" />
+            </svg>
+            <svg id="iconPlay" class="w-4 h-4 hidden" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M8 5v14l11-7z" />
+            </svg>
+            <span id="labelPauseResume">Pausar</span>
+          </button>
+
+          <button id="btnResetTimer" type="button" title="Pone el cronómetro a 00:00.0 manteniendo las temperaturas actuales del satélite" class="px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-semibold bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700 flex items-center justify-center gap-2 transition active:scale-[0.98]">
+            <svg class="w-4 h-4 text-sky-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M3 3v5h5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span>Reiniciar Contador</span>
+          </button>
+        </div>
+
+        <button id="btnResetSimulation" type="button" class="w-full px-3.5 py-2 rounded-xl text-xs font-medium bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/25 flex items-center justify-center gap-2 transition active:scale-[0.99]">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 12a9 9 0 0 1-9 9m9-9a9 9 0 0 0-9-9m9 9H3m9 9a9 9 0 0 1-9-9m9 9c1.66 0 3-4.03 3-9s-1.34-9-3-9m0 18c-1.66 0-3-4.03-3-9s1.34-9 3-9" stroke-linecap="round"/>
+          </svg>
+          <span>Reiniciar Simulación Completa (0.0 °C y 00:00.0)</span>
+        </button>
+      </section>
+
+      <!-- 2. PANEL DE TELEMETRÍA EN VIVO -->
+      <section class="glass-panel rounded-2xl p-4 sm:p-5 flex flex-col gap-3.5">
+        <div class="flex items-center justify-between">
+          <h2 class="text-xs font-mono uppercase tracking-wider text-slate-300 font-semibold">
+            Telemetría Térmica
+          </h2>
+          <span id="thermalStatusPill" class="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 transition-colors">
+            Equilibrio térmico
+          </span>
+        </div>
+
+        <!-- 3 Tarjetas de Métricas -->
+        <div class="grid grid-cols-3 gap-2.5">
+          <!-- Cara Caliente -->
+          <div class="rounded-xl bg-slate-950/75 border border-orange-500/25 p-3 flex flex-col justify-between">
+            <div class="flex items-center justify-between gap-1">
+              <span class="text-[11px] text-slate-400 font-medium">Cara Caliente</span>
+              <span id="hotFaceTag" class="text-[10px] font-mono px-1.5 py-0.2 rounded bg-orange-500/15 text-orange-300">A</span>
+            </div>
+            <div id="metricHot" class="text-lg sm:text-xl font-mono font-bold text-orange-400 tabular-nums mt-1.5">
+              0.0 °C
+            </div>
+          </div>
+
+          <!-- Cara Fría -->
+          <div class="rounded-xl bg-slate-950/75 border border-cyan-500/25 p-3 flex flex-col justify-between">
+            <div class="flex items-center justify-between gap-1">
+              <span class="text-[11px] text-slate-400 font-medium">Cara Fría</span>
+              <span id="coldFaceTag" class="text-[10px] font-mono px-1.5 py-0.2 rounded bg-cyan-500/15 text-cyan-300">C</span>
+            </div>
+            <div id="metricCold" class="text-lg sm:text-xl font-mono font-bold text-cyan-300 tabular-nums mt-1.5">
+              0.0 °C
+            </div>
+          </div>
+
+          <!-- Diferencia ΔT -->
+          <div class="rounded-xl bg-slate-950/75 border border-slate-700/70 p-3 flex flex-col justify-between">
+            <span class="text-[11px] text-slate-400 font-medium">Diferencia ΔT</span>
+            <div id="metricDelta" class="text-lg sm:text-xl font-mono font-bold text-slate-100 tabular-nums mt-1.5">
+              0.0 °C
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 3. CONTROLES DE INGENIERÍA TÉRMICA -->
+      <section class="glass-panel rounded-2xl p-4 sm:p-5 flex flex-col gap-5">
+        <h2 class="text-xs font-mono uppercase tracking-wider text-slate-300 font-semibold">
+          Parámetros del Satélite
+        </h2>
+
+        <!-- Control 1: Conducción Interna -->
+        <div class="flex flex-col gap-2">
+          <div class="flex items-center justify-between gap-2">
+            <label for="sliderConduction" class="text-sm font-medium text-slate-200">
+              Conducción interna
+            </label>
+            <span id="labelConduction" class="text-xs font-mono px-2 py-0.5 rounded-md bg-sky-500/15 text-sky-300 border border-sky-500/25">
+              Aislado · Satélite grande
+            </span>
+          </div>
+          <input id="sliderConduction" type="range" min="0" max="100" value="0" class="aero-slider" />
+          <div class="flex justify-between text-[11px] text-slate-500">
+            <span>Satélite grande aislado</span>
+            <span>CubeSat aluminio</span>
+          </div>
+        </div>
+
+        <!-- Control 2: Rotación / Modo Barbacoa -->
+        <div class="flex flex-col gap-2.5 pt-2 border-t border-slate-800/80">
+          <div class="flex items-center justify-between gap-2">
+            <label for="sliderRotation" class="text-sm font-medium text-slate-200">
+              Rotación (Modo barbacoa)
+            </label>
+            <span id="labelRotation" class="text-xs font-mono font-semibold text-amber-300 tabular-nums">
+              0.0 rpm (Estático)
+            </span>
+          </div>
+          <input id="sliderRotation" type="range" min="0" max="6" step="0.1" value="0" class="aero-slider" />
+          <div class="flex justify-between text-[11px] text-slate-500">
+            <span>0.0 rpm (Fijo al Sol)</span>
+            <span>6.0 rpm (Giro rápido)</span>
+          </div>
+
+          <button id="btnToggleBarbecue" type="button" class="mt-1 w-full px-3.5 py-2.5 rounded-xl text-xs font-semibold bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/35 flex items-center justify-center gap-2 transition active:scale-[0.98]">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 12a9 9 0 1 1-3-6.7L21 8" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M21 3v5h-5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span id="labelBarbecueBtn">Activar Modo Barbacoa (2.0 rpm)</span>
+          </button>
+        </div>
+
+        <!-- Control 3: Recubrimiento Superficial -->
+        <div class="flex flex-col gap-2.5 pt-2 border-t border-slate-800/80">
+          <div class="flex items-center justify-between">
+            <span class="text-sm font-medium text-slate-200">Recubrimiento superficial</span>
+            <span id="labelOpticalProps" class="text-[11px] font-mono text-slate-400 tabular-nums">
+              α = 0.88 · ε = 0.82
+            </span>
+          </div>
+
+          <div class="grid grid-cols-3 gap-2" role="group" aria-label="Recubrimiento superficial">
+            <button type="button" data-coating="solar" class="coating-btn p-2.5 rounded-xl text-left border border-sky-400/60 bg-sky-500/15 transition">
+              <div class="flex items-center gap-1.5 mb-1">
+                <span class="w-2.5 h-2.5 rounded-full bg-indigo-950 border border-indigo-400"></span>
+                <span class="text-xs font-semibold text-slate-100 leading-tight">Células solares</span>
+              </div>
+              <div class="text-[10px] font-mono text-slate-400">Absorbe mucho</div>
+            </button>
+
+            <button type="button" data-coating="white" class="coating-btn p-2.5 rounded-xl text-left border border-slate-800 bg-slate-900/80 hover:border-slate-700 transition">
+              <div class="flex items-center gap-1.5 mb-1">
+                <span class="w-2.5 h-2.5 rounded-full bg-slate-100 border border-slate-300"></span>
+                <span class="text-xs font-semibold text-slate-200 leading-tight">Pintura blanca</span>
+              </div>
+              <div class="text-[10px] font-mono text-slate-400">Refleja e irradia</div>
+            </button>
+
+            <button type="button" data-coating="aluminum" class="coating-btn p-2.5 rounded-xl text-left border border-slate-800 bg-slate-900/80 hover:border-slate-700 transition">
+              <div class="flex items-center gap-1.5 mb-1">
+                <span class="w-2.5 h-2.5 rounded-full bg-slate-400 border border-slate-200"></span>
+                <span class="text-xs font-semibold text-slate-200 leading-tight">Aluminio pulido</span>
+              </div>
+              <div class="text-[10px] font-mono text-slate-400">Baja emisión IR</div>
+            </button>
+          </div>
+
+          <!-- Nota física contextual según recubrimiento -->
+          <p id="coatingNote" class="text-[11px] leading-relaxed text-slate-400 bg-slate-950/60 border border-slate-800/70 rounded-xl px-3 py-2">
+            Las células solares absorben el 88% de la luz solar, generando un fuerte contraste térmico si el satélite no rota.
+          </p>
+        </div>
+      </section>
+
+    </div>
+  </main>
+
+  <script>
+    /**
+     * ============================================================================
+     * SIMULADOR TÉRMICO DE SATÉLITE CÚBICO - MOTOR FÍSICO Y VISUALIZACIÓN
+     * ============================================================================
+     */
+
+    // Constantes físicas fundamentales
+    const SOLAR_FLUX = 1361.0;          // W/m² (Constante solar a 1 UA)
+    const STEFAN_BOLTZMANN = 5.670374e-8; // W/(m²·K⁴)
+    const SPACE_TEMP_K = 3.0;           // K (-270.15 °C, radiación cósmica de fondo)
+    const CELSIUS_OFFSET = 273.15;      // Conversión K <-> °C
+    const THERMAL_CAPACITANCE = 95.0;   // J/(m²·K) calibrada para transitorios visibles en ~20-30s
+
+    // Catálogo de recubrimientos aeroespaciales
+    const COATINGS = {
+      solar: {
+        id: 'solar',
+        name: 'Células solares',
+        alpha: 0.88, // Absorptividad solar
+        epsilon: 0.82, // Emisividad infrarroja
+        note: 'Las células solares absorben el 88% de la luz solar, generando un fuerte contraste térmico entre la cara iluminada y la sombra.'
+      },
+      white: {
+        id: 'white',
+        name: 'Pintura blanca',
+        alpha: 0.20,
+        epsilon: 0.90,
+        note: 'La pintura blanca espacial refleja el 80% de la luz visible pero emite infrarrojos con gran eficacia, manteniendo frío el satélite.'
+      },
+      aluminum: {
+        id: 'aluminum',
+        name: 'Aluminio pulido',
+        alpha: 0.28,
+        epsilon: 0.10,
+        note: 'Curiosidad aeroespacial: el metal pulido absorbe poca luz, pero al emitir tan poca radiación IR (ε = 0.10) acaba acumulando mucho calor.'
+      }
+    };
+
+    // Nombres y colores identificativos de las 4 caras del cubo en el plano ecuatorial
+    const FACE_META = [
+      { id: 0, name: 'Cara A', short: 'A', baseAngle: Math.PI,       chartColor: '#fbbf24' }, // Inicialmente mirando al Sol (izquierda, θ = π)
+      { id: 1, name: 'Cara B', short: 'B', baseAngle: Math.PI * 0.5, chartColor: '#34d399' }, // Inicialmente abajo/superior
+      { id: 2, name: 'Cara C', short: 'C', baseAngle: 0,             chartColor: '#38bdf8' }, // Inicialmente en sombra profunda (derecha, θ = 0)
+      { id: 3, name: 'Cara D', short: 'D', baseAngle: -Math.PI * 0.5,chartColor: '#a78bfa' }  // Inicialmente cara opuesta lateral
+    ];
+
+    // Estado global de la simulación
+    const state = {
+      // Temperaturas en Kelvin de las 4 caras (inician a 0.0 °C = 273.15 K)
+      tempsK: [CELSIUS_OFFSET, CELSIUS_OFFSET, CELSIUS_OFFSET, CELSIUS_OFFSET],
+      rotationAngle: 0.0,       // Radianes acumulados de rotación del satélite
+      rpm: 0.0,                 // Velocidad angular en revoluciones por minuto (0 a 6)
+      conductionSlider: 0,      // 0 (aislado) a 100 (CubeSat metálico)
+      coatingKey: 'solar',      // 'solar' | 'white' | 'aluminum'
+      isPaused: false,          // Pausa general (física + cronómetro)
+      timeScale: 1,             // 1x, 2x, 5x
+      stopwatchSeconds: 0.0,    // Tiempo del cronómetro reiniciable (s)
+      missionTimeSeconds: 0.0,  // Tiempo total continuo para la gráfica histórica (s)
+      lastSampleTime: -1,       // Último instante muestreado en la gráfica
+      history: []               // Array de puntos { t, tempsC: [t0, t1, t2, t3] }
+    };
+
+    // Partículas visuales del campo estelar, fotones solares e impulsos térmicos
+    const visualEffects = {
+      stars: [],
+      photons: [],
+      irPulsePhase: 0,
+      heatFlowPhase: 0
+    };
+
+    // Referencias al DOM
+    const dom = {
+      simCanvas: document.getElementById('simCanvas'),
+      simWrapper: document.getElementById('simCanvasWrapper'),
+      chartCanvas: document.getElementById('chartCanvas'),
+      chartWrapper: document.getElementById('chartCanvasWrapper'),
+      stopwatchDisplay: document.getElementById('stopwatchDisplay'),
+      timerLed: document.getElementById('timerLed'),
+      timerStatusBadge: document.getElementById('timerStatusBadge'),
+      btnPauseResume: document.getElementById('btnPauseResume'),
+      iconPause: document.getElementById('iconPause'),
+      iconPlay: document.getElementById('iconPlay'),
+      labelPauseResume: document.getElementById('labelPauseResume'),
+      btnResetTimer: document.getElementById('btnResetTimer'),
+      btnResetSimulation: document.getElementById('btnResetSimulation'),
+      btnClearChart: document.getElementById('btnClearChart'),
+      speedBtns: document.querySelectorAll('.speed-btn'),
+      sliderConduction: document.getElementById('sliderConduction'),
+      labelConduction: document.getElementById('labelConduction'),
+      sliderRotation: document.getElementById('sliderRotation'),
+      labelRotation: document.getElementById('labelRotation'),
+      btnToggleBarbecue: document.getElementById('btnToggleBarbecue'),
+      labelBarbecueBtn: document.getElementById('labelBarbecueBtn'),
+      coatingBtns: document.querySelectorAll('.coating-btn'),
+      labelOpticalProps: document.getElementById('labelOpticalProps'),
+      coatingNote: document.getElementById('coatingNote'),
+      metricHot: document.getElementById('metricHot'),
+      metricCold: document.getElementById('metricCold'),
+      metricDelta: document.getElementById('metricDelta'),
+      hotFaceTag: document.getElementById('hotFaceTag'),
+      coldFaceTag: document.getElementById('coldFaceTag'),
+      thermalStatusPill: document.getElementById('thermalStatusPill')
+    };
+
+    /**
+     * Calcula los coeficientes de conductancia interna (W/(m²·K)) a partir del slider (0..100).
+     * Usa una curva exponencial suave para representar desde un satélite grande aislado
+     * hasta un CubeSat compacto de aluminio macizo.
+     */
+    function getConductanceCoeffs() {
+      const s = state.conductionSlider / 100.0;
+      // Conducción entre caras adyacentes: de 0.20 a 45.0 W/(m²·K)
+      const kAdj = 0.20 * Math.pow(225.0, s);
+      // Conducción directa a través del núcleo hacia la cara opuesta: de 0.08 a 22.0 W/(m²·K)
+      const kOpp = 0.08 * Math.pow(275.0, s);
+      return { kAdj, kOpp };
+    }
+
+    /**
+     * Avanza el modelo físico acoplado un intervalo dt (en segundos) mediante sub-pasos
+     * para garantizar estabilidad numérica incluso a 5x y con conducción máxima.
+     */
+    function stepPhysics(dt) {
+      if (dt <= 0) return;
+
+      const subSteps = 20;
+      const subDt = dt / subSteps;
+      const coating = COATINGS[state.coatingKey];
+      const { kAdj, kOpp } = getConductanceCoeffs();
+      const omega = (state.rpm * 2 * Math.PI) / 60.0; // rad/s
+      const spaceRadTerm = Math.pow(SPACE_TEMP_K, 4);
+
+      for (let step = 0; step < subSteps; step++) {
+        state.rotationAngle = (state.rotationAngle + omega * subDt) % (Math.PI * 2);
+
+        const nextTemps = [0, 0, 0, 0];
+
+        for (let i = 0; i < 4; i++) {
+          const theta = FACE_META[i].baseAngle + state.rotationAngle;
+          // La luz solar viaja de izquierda a derecha (+X), por lo que la normal que apunta
+          // hacia la izquierda (-X, cos(theta) = -1) recibe el 100% del flujo solar.
+          const solarIncidence = Math.max(0, -Math.cos(theta));
+          const qIn = coating.alpha * SOLAR_FLUX * solarIncidence;
+
+          // Radiación infrarroja emitida al espacio profundo según la Ley de Stefan-Boltzmann
+          const tK = state.tempsK[i];
+          const qOut = coating.epsilon * STEFAN_BOLTZMANN * (Math.pow(tK, 4) - spaceRadTerm);
+
+          // Flujo neto por conducción interna desde las caras adyacentes y la opuesta
+          const leftIdx = (i + 3) % 4;
+          const rightIdx = (i + 1) % 4;
+          const oppIdx = (i + 2) % 4;
+
+          const qCond =
+            kAdj * (state.tempsK[leftIdx] - tK) +
+            kAdj * (state.tempsK[rightIdx] - tK) +
+            kOpp * (state.tempsK[oppIdx] - tK);
+
+          const dT = ((qIn - qOut + qCond) / THERMAL_CAPACITANCE) * subDt;
+          // Evitar bajar del cero absoluto físico
+          nextTemps[i] = Math.max(SPACE_TEMP_K, tK + dT);
+        }
+
+        state.tempsK = nextTemps;
+      }
+
+      // Actualizar contadores de tiempo
+      state.stopwatchSeconds += dt;
+      state.missionTimeSeconds += dt;
+
+      // Registrar muestra en la gráfica histórica cada 0.25 s simulados
+      if (state.missionTimeSeconds - state.lastSampleTime >= 0.25 || state.history.length === 0) {
+        state.lastSampleTime = state.missionTimeSeconds;
+        state.history.push({
+          t: state.missionTimeSeconds,
+          tempsC: state.tempsK.map(k => k - CELSIUS_OFFSET)
+        });
+        // Limitar buffer a 600 puntos (~150 segundos de historial continuo)
+        if (state.history.length > 600) {
+          state.history.shift();
+        }
+      }
+    }
+
+    /**
+     * Mapea una temperatura en °C a un color RGB interpolado suavemente en la escala térmica:
+     * -140 °C (Azul criogénico) -> -40 °C (Cian hielo) -> +15 °C (Blanco plateado)
+     * -> +70 °C (Ámbar cálido) -> +140 °C (Rojo-naranja incandescente)
+     */
+    function temperatureToColor(tempC, alpha = 1) {
+      const stops = [
+        { t: -140, r: 29,  g: 78,  b: 216 }, // #1d4ed8 Azul profundo
+        { t: -40,  r: 6,   g: 182, b: 212 }, // #06b6d4 Cian hielo
+        { t: 15,   r: 226, g: 232, b: 240 }, // #e2e8f0 Plata neutro
+        { t: 70,   r: 245, g: 158, b: 11  }, // #f59e0b Ámbar
+        { t: 140,  r: 239, g: 68,  b: 68  }  // #ef4444 Rojo-naranja intenso
+      ];
+
+      if (tempC <= stops[0].t) {
+        const s = stops[0];
+        return `rgba(${s.r}, ${s.g}, ${s.b}, ${alpha})`;
+      }
+      if (tempC >= stops[stops.length - 1].t) {
+        const s = stops[stops.length - 1];
+        return `rgba(${s.r}, ${s.g}, ${s.b}, ${alpha})`;
+      }
+
+      for (let i = 0; i < stops.length - 1; i++) {
+        const a = stops[i];
+        const b = stops[i + 1];
+        if (tempC >= a.t && tempC <= b.t) {
+          const f = (tempC - a.t) / (b.t - a.t);
+          const r = Math.round(a.r + (b.r - a.r) * f);
+          const g = Math.round(a.g + (b.g - a.g) * f);
+          const bl = Math.round(a.b + (b.b - a.b) * f);
+          return `rgba(${r}, ${g}, ${bl}, ${alpha})`;
+        }
+      }
+      return `rgba(226, 232, 240, ${alpha})`;
+    }
+
+    /**
+     * Inicializa estrellas de fondo y partículas de fotones solares.
+     */
+    function initVisualParticles() {
+      visualEffects.stars = [];
+      for (let i = 0; i < 85; i++) {
+        visualEffects.stars.push({
+          x: Math.random(),
+          y: Math.random(),
+          radius: Math.random() * 1.4 + 0.4,
+          phase: Math.random() * Math.PI * 2,
+          speed: 0.8 + Math.random() * 1.8
+        });
+      }
+
+      visualEffects.photons = [];
+      for (let i = 0; i < 26; i++) {
+        visualEffects.photons.push({
+          progress: Math.random(),
+          yNorm: 0.14 + Math.random() * 0.72,
+          speed: 0.35 + Math.random() * 0.25,
+          size: 1.8 + Math.random() * 1.6
+        });
+      }
+    }
+
+    /**
+     * Ajusta el tamaño interno de un canvas HTML5 según su contenedor y el devicePixelRatio.
+     */
+    function resizeCanvasToContainer(canvas, container) {
+      const rect = container.getBoundingClientRect();
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const targetW = Math.max(1, Math.floor(rect.width * dpr));
+      const targetH = Math.max(1, Math.floor(rect.height * dpr));
+      if (canvas.width !== targetW || canvas.height !== targetH) {
+        canvas.width = targetW;
+        canvas.height = targetH;
+      }
+      return { width: rect.width, height: rect.height, dpr };
+    }
+
+    /**
+     * Dibuja la escena principal de simulación en el Canvas:
+     * - Fondo espacial con estrellas y retícula orbital
+     * - Corona solar izquierda y rayos/fotones incidentes
+     * - Satélite cúbico rotatorio con corte transversal, tubos de calor internos,
+     *   caras coloreadas según su temperatura, ondas infrarrojas salientes (∝ T⁴)
+     *   y etiquetas flotantes con lectura digital.
+     */
+    function renderSimulationCanvas(dtAnim) {
+      const { width: w, height: h, dpr } = resizeCanvasToContainer(dom.simCanvas, dom.simWrapper);
+      const ctx = dom.simCanvas.getContext('2d');
+      ctx.save();
+      ctx.scale(dpr, dpr);
+
+      // 1. Fondo del espacio profundo
+      ctx.fillStyle = '#070b14';
+      ctx.fillRect(0, 0, w, h);
+
+      // Retícula sutil estilo radar/telemetría
+      ctx.strokeStyle = 'rgba(56, 189, 248, 0.04)';
+      ctx.lineWidth = 1;
+      const gridStep = 44;
+      for (let gx = (w * 0.55) % gridStep; gx < w; gx += gridStep) {
+        ctx.beginPath();
+        ctx.moveTo(gx, 0);
+        ctx.lineTo(gx, h);
+        ctx.stroke();
+      }
+      for (let gy = (h * 0.5) % gridStep; gy < h; gy += gridStep) {
+        ctx.beginPath();
+        ctx.moveTo(0, gy);
+        ctx.lineTo(w, gy);
+        ctx.stroke();
+      }
+
+      // Estrellas centelleantes
+      const nowSec = performance.now() * 0.001;
+      for (const star of visualEffects.stars) {
+        const twinkle = 0.35 + 0.65 * (0.5 + 0.5 * Math.sin(nowSec * star.speed + star.phase));
+        ctx.fillStyle = `rgba(226, 232, 240, ${twinkle * 0.7})`;
+        ctx.beginPath();
+        ctx.arc(star.x * w, star.y * h, star.radius, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Coordenadas clave del Sol (izquierda) y del Satélite (centro-derecha)
+      const satX = w < 520 ? w * 0.58 : w * 0.56;
+      const satY = h * 0.48;
+      const cubeHalf = Math.max(54, Math.min(w, h) * 0.175);
+
+      // 2. El Sol en el borde izquierdo + Radiación solar incidente
+      const sunRadius = Math.max(130, h * 0.55);
+      const sunCenterX = -sunRadius * 0.74;
+      const sunCenterY = satY;
+
+      // Halo atmosférico/corona solar
+      const coronaGrad = ctx.createRadialGradient(
+        sunCenterX, sunCenterY, sunRadius * 0.7,
+        sunCenterX, sunCenterY, sunRadius * 1.45
+      );
+      coronaGrad.addColorStop(0, 'rgba(253, 224, 71, 0.95)');
+      coronaGrad.addColorStop(0.28, 'rgba(245, 158, 11, 0.42)');
+      coronaGrad.addColorStop(0.6, 'rgba(234, 88, 12, 0.12)');
+      coronaGrad.addColorStop(1, 'rgba(234, 88, 12, 0)');
+      ctx.fillStyle = coronaGrad;
+      ctx.beginPath();
+      ctx.arc(sunCenterX, sunCenterY, sunRadius * 1.45, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Disco solar brillante en el margen izquierdo
+      const diskGrad = ctx.createRadialGradient(
+        sunCenterX, sunCenterY, sunRadius * 0.2,
+        sunCenterX, sunCenterY, sunRadius
+      );
+      diskGrad.addColorStop(0, '#fef9c3');
+      diskGrad.addColorStop(0.75, '#fde047');
+      diskGrad.addColorStop(1, '#f59e0b');
+      ctx.fillStyle = diskGrad;
+      ctx.beginPath();
+      ctx.arc(sunCenterX, sunCenterY, sunRadius, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Etiqueta vertical del Sol
+      ctx.save();
+      ctx.fillStyle = 'rgba(254, 240, 138, 0.85)';
+      ctx.font = '600 10px "JetBrains Mono", monospace';
+      ctx.fillText('SOL · 1361 W/m²', 12, 24);
+      ctx.restore();
+
+      // Rayos solares paralelos viajando hacia el satélite
+      const rayTop = satY - cubeHalf * 1.45;
+      const rayBottom = satY + cubeHalf * 1.45;
+      const rayCount = 7;
+      const impactX = satX - cubeHalf * 1.15;
+
+      for (let r = 0; r < rayCount; r++) {
+        const ry = rayTop + ((rayBottom - rayTop) * r) / (rayCount - 1);
+        const startX = Math.max(24, sunCenterX + sunRadius * 0.92);
+        const rayGrad = ctx.createLinearGradient(startX, ry, impactX, ry);
+        rayGrad.addColorStop(0, 'rgba(253, 224, 71, 0.22)');
+        rayGrad.addColorStop(0.7, 'rgba(251, 191, 36, 0.14)');
+        rayGrad.addColorStop(1, 'rgba(251, 191, 36, 0.02)');
+
+        ctx.strokeStyle = rayGrad;
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([8, 8]);
+        ctx.lineDashOffset = -nowSec * 36;
+        ctx.beginPath();
+        ctx.moveTo(startX, ry);
+        ctx.lineTo(impactX, ry);
+        ctx.stroke();
+      }
+      ctx.setLineDash([]);
+
+      // Fotones animados viajando desde el Sol hacia el satélite
+      if (!state.isPaused) {
+        for (const p of visualEffects.photons) {
+          p.progress += p.speed * dtAnim * Math.min(state.timeScale, 2.5);
+          if (p.progress > 1) p.progress -= 1;
+        }
+        visualEffects.irPulsePhase = (visualEffects.irPulsePhase + dtAnim * 1.6) % 1;
+        visualEffects.heatFlowPhase = (visualEffects.heatFlowPhase + dtAnim * 1.2) % 1;
+      }
+
+      const photonStartX = Math.max(22, sunCenterX + sunRadius * 0.95);
+      const photonEndX = satX - cubeHalf * 1.05;
+      for (const p of visualEffects.photons) {
+        const px = photonStartX + (photonEndX - photonStartX) * p.progress;
+        const py = rayTop + (rayBottom - rayTop) * p.yNorm;
+        const alpha = Math.sin(p.progress * Math.PI) * 0.75;
+        ctx.fillStyle = `rgba(253, 224, 71, ${alpha})`;
+        ctx.beginPath();
+        ctx.arc(px, py, p.size, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // 3. Dibujo del Satélite Cúbico Rotatorio en el Centro
+      ctx.save();
+      ctx.translate(satX, satY);
+
+      // Sombra proyectada sutil detrás del satélite (hacia la derecha, lado oscuro)
+      const shadowGrad = ctx.createLinearGradient(0, 0, cubeHalf * 2.8, 0);
+      shadowGrad.addColorStop(0, 'rgba(2, 6, 23, 0.65)');
+      shadowGrad.addColorStop(1, 'rgba(2, 6, 23, 0)');
+      ctx.fillStyle = shadowGrad;
+      ctx.fillRect(0, -cubeHalf * 1.05, cubeHalf * 2.8, cubeHalf * 2.1);
+
+      // Rotar el sistema de coordenadas del cuerpo del satélite
+      ctx.save();
+      ctx.rotate(state.rotationAngle);
+
+      // Cuerpo interior (corte transversal técnico)
+      const innerHalf = cubeHalf * 0.84;
+      ctx.fillStyle = '#0c1324';
+      ctx.strokeStyle = 'rgba(148, 163, 184, 0.25)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.roundRect(-innerHalf, -innerHalf, innerHalf * 2, innerHalf * 2, 10);
+      ctx.fill();
+      ctx.stroke();
+
+      // Tubos de calor internos (Heat Pipes) conectando las 4 caras con el bus central
+      const condRatio = state.conductionSlider / 100;
+      const pipeWidth = 2.5 + condRatio * 5.5;
+      const avgTempC = state.tempsK.reduce((acc, k) => acc + (k - CELSIUS_OFFSET), 0) / 4;
+
+      // Tubos diagonales de soporte estructural
+      ctx.strokeStyle = 'rgba(71, 85, 105, 0.35)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(-innerHalf * 0.85, -innerHalf * 0.85);
+      ctx.lineTo(innerHalf * 0.85, innerHalf * 0.85);
+      ctx.moveTo(innerHalf * 0.85, -innerHalf * 0.85);
+      ctx.lineTo(-innerHalf * 0.85, innerHalf * 0.85);
+      ctx.stroke();
+
+      // 4 Tubos de calor principales desde el núcleo hacia cada cara
+      for (let i = 0; i < 4; i++) {
+        const theta = FACE_META[i].baseAngle;
+        const nx = Math.cos(theta);
+        const ny = Math.sin(theta);
+        const faceTempC = state.tempsK[i] - CELSIUS_OFFSET;
+
+        const pipeGrad = ctx.createLinearGradient(0, 0, nx * innerHalf, ny * innerHalf);
+        pipeGrad.addColorStop(0, temperatureToColor(avgTempC, 0.45 + condRatio * 0.45));
+        pipeGrad.addColorStop(1, temperatureToColor(faceTempC, 0.65 + condRatio * 0.35));
+
+        ctx.strokeStyle = pipeGrad;
+        ctx.lineWidth = pipeWidth;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(nx * innerHalf * 0.92, ny * innerHalf * 0.92);
+        ctx.stroke();
+
+        // Pulsos de flujo de calor viajando desde las caras calientes hacia el centro
+        if (condRatio > 0.05 && Math.abs(faceTempC - avgTempC) > 2.0) {
+          const dir = faceTempC > avgTempC ? -1 : 1; // -1 hacia centro, +1 hacia cara fría
+          const tFlow = dir === -1 ? (1 - visualEffects.heatFlowPhase) : visualEffects.heatFlowPhase;
+          const dist = innerHalf * (0.2 + 0.65 * tFlow);
+          ctx.fillStyle = temperatureToColor(faceTempC, 0.9);
+          ctx.beginPath();
+          ctx.arc(nx * dist, ny * dist, 2.2 + condRatio * 2.0, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      // Núcleo / Bus electrónico central
+      ctx.fillStyle = '#111b33';
+      ctx.strokeStyle = temperatureToColor(avgTempC, 0.8);
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(0, 0, cubeHalf * 0.24, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = 'rgba(226, 232, 240, 0.75)';
+      ctx.font = '600 9px "JetBrains Mono", monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('BUS', 0, 0);
+
+      // Dibujar las 4 caras externas del cubo con su color térmico dinámico
+      const panelThickness = cubeHalf * 0.18;
+      const panelSpan = cubeHalf * 1.72;
+
+      for (let i = 0; i < 4; i++) {
+        const theta = FACE_META[i].baseAngle;
+        const tempC = state.tempsK[i] - CELSIUS_OFFSET;
+        const faceColor = temperatureToColor(tempC, 0.96);
+        const glowColor = temperatureToColor(tempC, 0.45);
+
+        ctx.save();
+        ctx.rotate(theta);
+        // Posicionar en el borde exterior derecho local (+X tras rotar theta)
+        ctx.translate(cubeHalf - panelThickness * 0.5, 0);
+
+        // Resplandor térmico de la cara
+        ctx.shadowColor = glowColor;
+        ctx.shadowBlur = 14;
+
+        ctx.fillStyle = faceColor;
+        ctx.beginPath();
+        ctx.roundRect(-panelThickness * 0.5, -panelSpan * 0.5, panelThickness, panelSpan, 5);
+        ctx.fill();
+
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        // Detalle visual del recubrimiento sobre la placa
+        if (state.coatingKey === 'solar') {
+          // Celdas fotovoltaicas segmentadas
+          ctx.strokeStyle = 'rgba(15, 23, 42, 0.45)';
+          ctx.lineWidth = 1;
+          for (let seg = -2; seg <= 2; seg++) {
+            const sy = (panelSpan / 6) * seg;
+            ctx.beginPath();
+            ctx.moveTo(-panelThickness * 0.4, sy);
+            ctx.lineTo(panelThickness * 0.4, sy);
+            ctx.stroke();
+          }
+        } else if (state.coatingKey === 'aluminum') {
+          // Brillo especular metálico
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.28)';
+          ctx.fillRect(-panelThickness * 0.15, -panelSpan * 0.45, panelThickness * 0.3, panelSpan * 0.9);
+        }
+
+        ctx.restore();
+      }
+
+      ctx.restore(); // Fin de rotación del satélite
+
+      // 4. Ondas de radiación infrarroja (IR) emitidas hacia el espacio (∝ ε · T⁴)
+      // y Etiquetas Flotantes de Telemetría por cada cara
+      const coating = COATINGS[state.coatingKey];
+
+      for (let i = 0; i < 4; i++) {
+        const worldTheta = FACE_META[i].baseAngle + state.rotationAngle;
+        const nx = Math.cos(worldTheta);
+        const ny = Math.sin(worldTheta);
+        const tK = state.tempsK[i];
+        const tempC = tK - CELSIUS_OFFSET;
+
+        // Intensidad normalizada de emisión IR (proporcional a ε * T⁴)
+        const irWatts = coating.epsilon * STEFAN_BOLTZMANN * Math.pow(tK, 4);
+        const irIntensity = Math.min(1.0, irWatts / 950.0);
+
+        // Dibujar ondas IR salientes si hay emisión apreciable
+        if (irIntensity > 0.04) {
+          const waveBaseDist = cubeHalf + 10;
+          const maxWaveTravel = 18 + irIntensity * 34;
+
+          for (let wIdx = 0; wIdx < 2; wIdx++) {
+            const phase = (visualEffects.irPulsePhase + wIdx * 0.5) % 1;
+            const dist = waveBaseDist + phase * maxWaveTravel;
+            const alpha = (1 - phase) * (0.25 + irIntensity * 0.65);
+            const arcRadius = 14 + phase * 12;
+
+            ctx.save();
+            ctx.translate(nx * dist, ny * dist);
+            ctx.rotate(worldTheta);
+            ctx.strokeStyle = `rgba(251, 113, 133, ${alpha})`;
+            ctx.lineWidth = 1.4 + irIntensity * 1.4;
+            ctx.beginPath();
+            ctx.arc(-arcRadius * 0.5, 0, arcRadius, -0.55, 0.55);
+            ctx.stroke();
+            ctx.restore();
+          }
+        }
+
+        // Etiqueta flotante con temperatura en °C fuera de cada cara
+        const badgeDist = cubeHalf + (w < 480 ? 48 : 62);
+        const bx = nx * badgeDist;
+        const by = ny * badgeDist;
+
+        const badgeW = 78;
+        const badgeH = 34;
+        const borderCol = temperatureToColor(tempC, 0.75);
+
+        ctx.save();
+        ctx.translate(bx, by);
+
+        // Fondo de la cápsula de telemetría
+        ctx.fillStyle = 'rgba(10, 15, 29, 0.88)';
+        ctx.strokeStyle = borderCol;
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.roundRect(-badgeW * 0.5, -badgeH * 0.5, badgeW, badgeH, 8);
+        ctx.fill();
+        ctx.stroke();
+
+        // Nombre de cara (Cara A, B, C, D)
+        ctx.fillStyle = FACE_META[i].chartColor;
+        ctx.font = '600 9.5px "JetBrains Mono", monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+        ctx.fillText(FACE_META[i].name.toUpperCase(), 0, -badgeH * 0.5 + 4);
+
+        // Lectura numérica en °C
+        const sign = tempC > 0.05 ? '+' : '';
+        ctx.fillStyle = '#f8fafc';
+        ctx.font = '700 11.5px "JetBrains Mono", monospace';
+        ctx.textBaseline = 'bottom';
+        ctx.fillText(`${sign}${tempC.toFixed(1)} °C`, 0, badgeH * 0.5 - 4);
+
+        ctx.restore();
+      }
+
+      ctx.restore(); // Fin de traslación al centro del satélite
+      ctx.restore(); // Fin de escala DPR
+    }
+
+    /**
+     * Dibuja la gráfica histórica de las 4 curvas de temperatura (°C vs tiempo).
+     */
+    function renderHistoryChart() {
+      const { width: w, height: h, dpr } = resizeCanvasToContainer(dom.chartCanvas, dom.chartWrapper);
+      const ctx = dom.chartCanvas.getContext('2d');
+      ctx.save();
+      ctx.scale(dpr, dpr);
+
+      ctx.clearRect(0, 0, w, h);
+
+      const padLeft = 48;
+      const padRight = 16;
+      const padTop = 14;
+      const padBottom = 24;
+      const plotW = Math.max(10, w - padLeft - padRight);
+      const plotH = Math.max(10, h - padTop - padBottom);
+
+      // Rango vertical dinámico o fijo cómodo (-150 °C a +150 °C, ampliable si el aluminio sube más)
+      let maxVal = 150;
+      let minVal = -150;
+      for (const pt of state.history) {
+        for (const t of pt.tempsC) {
+          if (t > maxVal - 10) maxVal = Math.ceil((t + 15) / 25) * 25;
+          if (t < minVal + 10) minVal = Math.floor((t - 15) / 25) * 25;
+        }
+      }
+
+      const yToPx = (tempC) => {
+        const norm = (tempC - minVal) / (maxVal - minVal);
+        return padTop + plotH * (1 - norm);
+      };
+
+      // Líneas horizontales de referencia térmica
+      const ticks = [minVal, Math.round(minVal / 2), 0, Math.round(maxVal / 2), maxVal];
+      ctx.font = '500 10px "JetBrains Mono", monospace';
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'middle';
+
+      for (const tick of ticks) {
+        const py = yToPx(tick);
+        ctx.strokeStyle = tick === 0 ? 'rgba(148, 163, 184, 0.25)' : 'rgba(51, 65, 85, 0.35)';
+        ctx.lineWidth = tick === 0 ? 1.2 : 1;
+        ctx.beginPath();
+        ctx.moveTo(padLeft, py);
+        ctx.lineTo(padLeft + plotW, py);
+        ctx.stroke();
+
+        ctx.fillStyle = tick === 0 ? '#cbd5e1' : '#64748b';
+        const prefix = tick > 0 ? '+' : '';
+        ctx.fillText(`${prefix}${tick}°`, padLeft - 6, py);
+      }
+
+      // Eje temporal inferior
+      if (state.history.length >= 2) {
+        const tStart = state.history[0].t;
+        const tEnd = state.history[state.history.length - 1].t;
+        const tSpan = Math.max(5, tEnd - tStart);
+
+        const xToPx = (t) => padLeft + ((t - tStart) / tSpan) * plotW;
+
+        // Etiquetas de tiempo en el eje X
+        ctx.fillStyle = '#64748b';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+        const xSteps = 4;
+        for (let s = 0; s <= xSteps; s++) {
+          const ts = tStart + (tSpan * s) / xSteps;
+          const px = xToPx(ts);
+          ctx.fillText(`${ts.toFixed(0)}s`, px, padTop + plotH + 6);
+        }
+
+        // Dibujar las 4 curvas de temperatura
+        for (let faceIdx = 0; faceIdx < 4; faceIdx++) {
+          ctx.strokeStyle = FACE_META[faceIdx].chartColor;
+          ctx.lineWidth = 2;
+          ctx.lineJoin = 'round';
+          ctx.beginPath();
+
+          for (let idx = 0; idx < state.history.length; idx++) {
+            const pt = state.history[idx];
+            const px = xToPx(pt.t);
+            const py = yToPx(pt.tempsC[faceIdx]);
+            if (idx === 0) ctx.moveTo(px, py);
+            else ctx.lineTo(px, py);
+          }
+          ctx.stroke();
+
+          // Punto final activo en el extremo derecho de cada curva
+          const lastPt = state.history[state.history.length - 1];
+          ctx.fillStyle = FACE_META[faceIdx].chartColor;
+          ctx.beginPath();
+          ctx.arc(xToPx(lastPt.t), yToPx(lastPt.tempsC[faceIdx]), 3.2, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      ctx.restore();
+    }
+
+    /**
+     * Formatea segundos en cadena digital MM:SS.d (ej. "00:14.3")
+     */
+    function formatStopwatch(totalSeconds) {
+      const mins = Math.floor(totalSeconds / 60);
+      const secs = Math.floor(totalSeconds % 60);
+      const tenths = Math.floor((totalSeconds * 10) % 10);
+      const mm = String(mins).padStart(2, '0');
+      const ss = String(secs).padStart(2, '0');
+      return `${mm}:${ss}.${tenths}`;
+    }
+
+    /**
+     * Actualiza todos los indicadores numéricos y etiquetas de telemetría del DOM.
+     */
+    function updateTelemetryUI() {
+      dom.stopwatchDisplay.textContent = formatStopwatch(state.stopwatchSeconds);
+
+      let maxTemp = -Infinity;
+      let minTemp = Infinity;
+      let hotIdx = 0;
+      let coldIdx = 0;
+
+      for (let i = 0; i < 4; i++) {
+        const tC = state.tempsK[i] - CELSIUS_OFFSET;
+        if (tC > maxTemp) {
+          maxTemp = tC;
+          hotIdx = i;
+        }
+        if (tC < minTemp) {
+          minTemp = tC;
+          coldIdx = i;
+        }
+      }
+
+      const deltaT = Math.max(0, maxTemp - minTemp);
+
+      const hotSign = maxTemp > 0.05 ? '+' : '';
+      const coldSign = minTemp > 0.05 ? '+' : '';
+
+      dom.metricHot.textContent = `${hotSign}${maxTemp.toFixed(1)} °C`;
+      dom.metricCold.textContent = `${coldSign}${minTemp.toFixed(1)} °C`;
+      dom.metricDelta.textContent = `${deltaT.toFixed(1)} °C`;
+
+      dom.hotFaceTag.textContent = FACE_META[hotIdx].short;
+      dom.coldFaceTag.textContent = FACE_META[coldIdx].short;
+
+      // Actualizar píldora de estado térmico según ΔT
+      if (deltaT < 15.0) {
+        dom.thermalStatusPill.textContent = 'Equilibrio térmico';
+        dom.thermalStatusPill.className =
+          'px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 transition-colors';
+      } else if (deltaT <= 80.0) {
+        dom.thermalStatusPill.textContent = 'Gradiente moderado';
+        dom.thermalStatusPill.className =
+          'px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/30 transition-colors';
+      } else {
+        dom.thermalStatusPill.textContent = 'Estrés térmico extremo';
+        dom.thermalStatusPill.className =
+          'px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-rose-500/15 text-rose-300 border border-rose-500/30 transition-colors';
+      }
+    }
+
+    /**
+     * Sincroniza la apariencia visual de los controles (pausa, rotación, conducción, recubrimiento).
+     */
+    function syncControlsUI() {
+      // Estado Pausa / Reanudar
+      if (state.isPaused) {
+        dom.labelPauseResume.textContent = 'Reanudar';
+        dom.iconPause.classList.add('hidden');
+        dom.iconPlay.classList.remove('hidden');
+        dom.timerLed.className = 'w-2.5 h-2.5 rounded-full bg-amber-400';
+        dom.timerStatusBadge.textContent = 'PAUSADO';
+        dom.timerStatusBadge.className =
+          'text-[11px] font-mono px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-300 border border-amber-500/30';
+      } else {
+        dom.labelPauseResume.textContent = 'Pausar';
+        dom.iconPause.classList.remove('hidden');
+        dom.iconPlay.classList.add('hidden');
+        dom.timerLed.className = 'w-2.5 h-2.5 rounded-full bg-emerald-400 led-active';
+        dom.timerStatusBadge.textContent = 'EN CURSO';
+        dom.timerStatusBadge.className =
+          'text-[11px] font-mono px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-300 border border-emerald-500/30';
+      }
+
+      // Conducción
+      const cVal = state.conductionSlider;
+      if (cVal < 25) {
+        dom.labelConduction.textContent = 'Aislado · Satélite grande';
+      } else if (cVal < 70) {
+        dom.labelConduction.textContent = `Media · Estructura (${cVal}%)`;
+      } else {
+        dom.labelConduction.textContent = 'Alta · CubeSat aluminio';
+      }
+
+      // Rotación / Modo Barbacoa
+      dom.sliderRotation.value = state.rpm.toFixed(1);
+      if (state.rpm === 0) {
+        dom.labelRotation.textContent = '0.0 rpm (Estático)';
+        dom.labelBarbecueBtn.textContent = 'Activar Modo Barbacoa (2.0 rpm)';
+        dom.btnToggleBarbecue.className =
+          'mt-1 w-full px-3.5 py-2.5 rounded-xl text-xs font-semibold bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/35 flex items-center justify-center gap-2 transition active:scale-[0.98]';
+      } else {
+        dom.labelRotation.textContent = `${state.rpm.toFixed(1)} rpm (Girando)`;
+        dom.labelBarbecueBtn.textContent = 'Detener Rotación (0.0 rpm)';
+        dom.btnToggleBarbecue.className =
+          'mt-1 w-full px-3.5 py-2.5 rounded-xl text-xs font-semibold bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2 transition active:scale-[0.98]';
+      }
+
+      // Recubrimiento superficial
+      const activeCoating = COATINGS[state.coatingKey];
+      dom.labelOpticalProps.textContent = `α = ${activeCoating.alpha.toFixed(2)} · ε = ${activeCoating.epsilon.toFixed(2)}`;
+      dom.coatingNote.textContent = activeCoating.note;
+
+      dom.coatingBtns.forEach(btn => {
+        const key = btn.getAttribute('data-coating');
+        if (key === state.coatingKey) {
+          btn.className =
+            'coating-btn p-2.5 rounded-xl text-left border border-sky-400/70 bg-sky-500/15 shadow-sm transition';
+        } else {
+          btn.className =
+            'coating-btn p-2.5 rounded-xl text-left border border-slate-800 bg-slate-900/80 hover:border-slate-700 transition';
+        }
+      });
+
+      // Velocidad
+      dom.speedBtns.forEach(btn => {
+        const spd = Number(btn.getAttribute('data-speed'));
+        if (spd === state.timeScale) {
+          btn.className =
+            'speed-btn px-2.5 py-1 rounded-md text-xs font-mono font-semibold bg-sky-500 text-slate-950 shadow-sm transition';
+        } else {
+          btn.className =
+            'speed-btn px-2.5 py-1 rounded-md text-xs font-mono font-semibold text-slate-400 hover:text-slate-200 transition';
+        }
+      });
+    }
+
+    /**
+     * Configura todos los event listeners de botones y deslizadores.
+     */
+    function bindEvents() {
+      // Pausar / Reanudar
+      dom.btnPauseResume.addEventListener('click', () => {
+        state.isPaused = !state.isPaused;
+        syncControlsUI();
+      });
+
+      // Reiniciar solo el contador (conservando el estado térmico actual)
+      dom.btnResetTimer.addEventListener('click', () => {
+        state.stopwatchSeconds = 0.0;
+        updateTelemetryUI();
+      });
+
+      // Reiniciar simulación completa (0.0 °C, cronómetro a 00:00.0 y gráfica limpia)
+      dom.btnResetSimulation.addEventListener('click', () => {
+        state.tempsK = [CELSIUS_OFFSET, CELSIUS_OFFSET, CELSIUS_OFFSET, CELSIUS_OFFSET];
+        state.rotationAngle = 0.0;
+        state.stopwatchSeconds = 0.0;
+        state.missionTimeSeconds = 0.0;
+        state.lastSampleTime = -1;
+        state.history = [];
+        updateTelemetryUI();
+        renderHistoryChart();
+      });
+
+      // Limpiar gráfica histórica
+      dom.btnClearChart.addEventListener('click', () => {
+        state.history = [];
+        state.lastSampleTime = -1;
+        renderHistoryChart();
+      });
+
+      // Selector de velocidad (1x, 2x, 5x)
+      dom.speedBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+          state.timeScale = Number(btn.getAttribute('data-speed')) || 1;
+          syncControlsUI();
+        });
+      });
+
+      // Deslizador de conducción interna
+      dom.sliderConduction.addEventListener('input', (e) => {
+        state.conductionSlider = Number(e.target.value);
+        syncControlsUI();
+      });
+
+      // Deslizador de rotación
+      dom.sliderRotation.addEventListener('input', (e) => {
+        state.rpm = parseFloat(e.target.value);
+        syncControlsUI();
+      });
+
+      // Botón rápido Modo Barbacoa (alterna entre 2.0 rpm y 0.0 rpm)
+      dom.btnToggleBarbecue.addEventListener('click', () => {
+        state.rpm = state.rpm > 0 ? 0.0 : 2.0;
+        syncControlsUI();
+      });
+
+      // Botones de recubrimiento superficial
+      dom.coatingBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+          const key = btn.getAttribute('data-coating');
+          if (COATINGS[key]) {
+            state.coatingKey = key;
+            syncControlsUI();
+          }
+        });
+      });
+    }
+
+    /**
+     * Bucle principal de animación a 60 FPS.
+     */
+    let lastFrameTime = null;
+    function mainLoop(timestamp) {
+      if (lastFrameTime === null) lastFrameTime = timestamp;
+      const rawDt = Math.min((timestamp - lastFrameTime) / 1000.0, 0.1); // Limitar saltos al cambiar de pestaña
+      lastFrameTime = timestamp;
+
+      if (!state.isPaused) {
+        const simDt = rawDt * state.timeScale;
+        stepPhysics(simDt);
+      }
+
+      updateTelemetryUI();
+      renderSimulationCanvas(rawDt);
+      renderHistoryChart();
+
+      requestAnimationFrame(mainLoop);
+    }
+
+    // Inicialización al cargar la página
+    window.addEventListener('DOMContentLoaded', () => {
+      initVisualParticles();
+      bindEvents();
+      syncControlsUI();
+      updateTelemetryUI();
+      requestAnimationFrame(mainLoop);
+    });
+  </script>
+</body>
+</html>
